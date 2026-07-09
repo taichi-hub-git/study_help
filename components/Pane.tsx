@@ -1,14 +1,20 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import dynamic from "next/dynamic";
 import TabBar from "@/components/TabBar";
-import PdfViewerTab from "@/components/tabs/PdfViewerTab";
 import SummaryTab from "@/components/tabs/SummaryTab";
 import QuizTab from "@/components/tabs/QuizTab";
 import FlashcardsTab from "@/components/tabs/FlashcardsTab";
 import MindmapTab from "@/components/tabs/MindmapTab";
 import MemorizeTab from "@/components/tabs/MemorizeTab";
 import type { JumpRequest, TabId } from "@/lib/types";
+
+// react-pdf/pdfjs-dist reference browser-only globals (e.g. DOMMatrix) at
+// module scope, which crashes if evaluated during server-side rendering.
+const PdfViewerTab = dynamic(() => import("@/components/tabs/PdfViewerTab"), {
+  ssr: false,
+});
 
 export default function Pane({
   pdfId,

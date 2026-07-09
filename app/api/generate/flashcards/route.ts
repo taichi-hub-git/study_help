@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const flashcards = await generateValidatedJson(
+      "flashcards",
       flashcardsSchema,
       flashcardsSystemPrompt(),
       flashcardsUserPrompt(sourceText)

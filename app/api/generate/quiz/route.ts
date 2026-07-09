@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const quiz = await generateValidatedJson(
+      "quiz",
       quizSchema,
       quizSystemPrompt(),
       quizUserPrompt(sourceText, params)

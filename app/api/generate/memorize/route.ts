@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await generateValidatedJson(
+      "memorize",
       memorizeResultSchema,
       memorizeSystemPrompt(),
       memorizeUserPrompt(sourceText)

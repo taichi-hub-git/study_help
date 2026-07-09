@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await generateValidatedJson(
+      "mindmap",
       mindmapResultSchema,
       mindmapSystemPrompt(),
       mindmapUserPrompt(sourceText)

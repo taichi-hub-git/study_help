@@ -4,6 +4,7 @@ import { describeGeminiError, getGeminiClient, MODEL } from "@/lib/gemini";
 import { getCachedGeneration, getPdfPages, saveGeneration } from "@/lib/generations";
 import { pagesToSourceText, summarySystemPrompt, summaryUserPrompt } from "@/lib/prompts";
 import { summaryGenParamsSchema } from "@/lib/schemas";
+import { recordTokenUsage, usageFromMetadata } from "@/lib/tokenUsage";
 
 const requestSchema = z.object({
   pdfId: z.string().min(1),
@@ -68,12 +69,15 @@ export async function POST(req: NextRequest) {
           },
         });
 
+        let usage = null;
         for await (const chunk of geminiStream) {
+          if (chunk.usageMetadata) usage = usageFromMetadata(chunk.usageMetadata);
           const delta = chunk.text ?? "";
           if (!delta) continue;
           fullText += delta;
           write(controller, { type: "delta", text: delta });
         }
+        recordTokenUsage("summary", usage);
 
         saveGeneration(pdfId, "summary", params, fullText);
         write(controller, { type: "done" });

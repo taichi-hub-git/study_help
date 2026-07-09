@@ -44,6 +44,15 @@ function createDb(): Database.Database {
       createdAt TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_generations_lookup ON generations(pdfId, feature, params);
+
+    CREATE TABLE IF NOT EXISTS token_usage (
+      id TEXT PRIMARY KEY,
+      feature TEXT NOT NULL,
+      promptTokens INTEGER NOT NULL,
+      outputTokens INTEGER NOT NULL,
+      totalTokens INTEGER NOT NULL,
+      createdAt TEXT NOT NULL
+    );
   `);
 
   return db;

@@ -36,6 +36,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# app data (uploaded PDFs, sqlite db)
+/data/
+
+# copied by scripts/copy-pdf-worker.mjs (postinstall) from react-pdf's
+# bundled pdfjs-dist, kept out of git since it's regenerated on `npm install`
+/public/pdf.worker.min.mjs
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

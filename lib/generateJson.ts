@@ -1,12 +1,19 @@
 import "server-only";
+import { ApiError } from "@google/genai";
 import type { z } from "zod";
 import { extractJson, getGeminiClient, MODEL } from "@/lib/gemini";
 import type { Feature } from "@/lib/schemas";
 import { recordTokenUsage, usageFromMetadata } from "@/lib/tokenUsage";
 
 /** Calls Gemini asking for JSON-only output, validates it against `schema`,
- * and retries once (fresh call) if parsing/validation fails. Every call's
- * token usage is recorded, including a failed first attempt that gets retried. */
+ * and retries once (fresh call) if the model's response wasn't valid JSON
+ * matching the schema. Every call's token usage is recorded, including a
+ * failed first attempt that gets retried.
+ *
+ * Retries only that "bad output" case, not `ApiError`s (rate limit, auth,
+ * server errors, ...): those come from the call itself failing, not from
+ * questionable output, so an immediate retry is very likely to hit the same
+ * error again (and, for a rate limit, only makes it worse). */
 export async function generateValidatedJson<T>(
   feature: Feature,
   schema: z.ZodType<T>,
@@ -32,7 +39,8 @@ export async function generateValidatedJson<T>(
 
   try {
     return await attempt();
-  } catch {
+  } catch (e) {
+    if (e instanceof ApiError) throw e;
     return await attempt();
   }
 }

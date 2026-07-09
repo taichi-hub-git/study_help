@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import UploadDropzone from "@/components/UploadDropzone";
 import type { PdfRecord } from "@/lib/schemas";
 
 interface FolderWithCount {
@@ -16,10 +17,9 @@ export default function Home() {
   const [folders, setFolders] = useState<FolderWithCount[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
   const [newFolderName, setNewFolderName] = useState("");
   const [creatingFolder, setCreatingFolder] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -43,34 +43,30 @@ export default function Home() {
     })();
   }, [load]);
 
-  const uploadFile = useCallback(
-    async (file: File) => {
+  const uploadFiles = useCallback(
+    async (files: File[]) => {
       setError(null);
       setUploading(true);
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-        const res = await fetch("/api/pdfs", { method: "POST", body: formData });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "アップロードに失敗しました");
+        for (let i = 0; i < files.length; i++) {
+          setUploadProgress(
+            files.length > 1 ? `アップロード中 (${i + 1}/${files.length}): ${files[i].name}` : ""
+          );
+          const formData = new FormData();
+          formData.append("file", files[i]);
+          const res = await fetch("/api/pdfs", { method: "POST", body: formData });
+          const data = await res.json();
+          if (!res.ok) throw new Error(`${files[i].name}: ${data.error ?? "アップロードに失敗しました"}`);
+        }
         await load();
       } catch (e) {
         setError(e instanceof Error ? e.message : "アップロードに失敗しました");
       } finally {
         setUploading(false);
+        setUploadProgress("");
       }
     },
     [load]
-  );
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      setDragOver(false);
-      const file = e.dataTransfer.files?.[0];
-      if (file) uploadFile(file);
-    },
-    [uploadFile]
   );
 
   const createFolder = async () => {
@@ -137,44 +133,12 @@ export default function Home() {
           </p>
         </div>
 
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          onClick={() => inputRef.current?.click()}
-          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-12 text-center transition-colors ${
-            dragOver
-              ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
-              : "border-zinc-300 dark:border-zinc-700"
-          }`}
-        >
-          <input
-            ref={inputRef}
-            type="file"
-            accept="application/pdf"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) uploadFile(file);
-              e.target.value = "";
-            }}
-          />
-          {uploading ? (
-            <p className="text-sm text-zinc-600 dark:text-zinc-300">
-              アップロード中・テキスト抽出中...
-            </p>
-          ) : (
-            <>
-              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                PDFをドラッグ&ドロップ、またはクリックして選択
-              </p>
-              <p className="text-xs text-zinc-400">.pdf ファイルのみ（未分類として追加されます）</p>
-            </>
-          )}
-        </div>
+        <UploadDropzone
+          onFiles={uploadFiles}
+          uploading={uploading}
+          progressLabel={uploadProgress || undefined}
+          hint=".pdf ファイルのみ（未分類として追加されます）"
+        />
 
         {error && (
           <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">

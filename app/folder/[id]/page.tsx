@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import UploadDropzone from "@/components/UploadDropzone";
 import FolderQuizView from "@/components/folder/FolderQuizView";
 import FolderMemorizeView from "@/components/folder/FolderMemorizeView";
+import FolderCramView from "@/components/folder/FolderCramView";
 import type { FolderRecord, PdfRecord } from "@/lib/schemas";
 
-type FolderTab = "quiz" | "memorize";
+type FolderTab = "quiz" | "memorize" | "cram";
 
 export default function FolderPage() {
   const params = useParams<{ id: string }>();
@@ -24,8 +26,7 @@ export default function FolderPage() {
   }
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploadProgress, setUploadProgress] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/folders/${folderId}`);
@@ -44,21 +45,27 @@ export default function FolderPage() {
     })();
   }, [load]);
 
-  const uploadFile = async (file: File) => {
+  const uploadFiles = async (files: File[]) => {
     setUploadError(null);
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("folderId", folderId);
-      const res = await fetch("/api/pdfs", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "アップロードに失敗しました");
+      for (let i = 0; i < files.length; i++) {
+        setUploadProgress(
+          files.length > 1 ? `アップロード中 (${i + 1}/${files.length}): ${files[i].name}` : ""
+        );
+        const formData = new FormData();
+        formData.append("file", files[i]);
+        formData.append("folderId", folderId);
+        const res = await fetch("/api/pdfs", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(`${files[i].name}: ${data.error ?? "アップロードに失敗しました"}`);
+      }
       await load();
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "アップロードに失敗しました");
     } finally {
       setUploading(false);
+      setUploadProgress("");
     }
   };
 
@@ -124,40 +131,12 @@ export default function FolderPage() {
 
       <main className="flex flex-1 overflow-hidden">
         <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file) uploadFile(file);
-            }}
-            onClick={() => inputRef.current?.click()}
-            className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-3 py-6 text-center transition-colors ${
-              dragOver
-                ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
-                : "border-zinc-300 dark:border-zinc-700"
-            }`}
-          >
-            <input
-              ref={inputRef}
-              type="file"
-              accept="application/pdf"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadFile(file);
-                e.target.value = "";
-              }}
-            />
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              {uploading ? "アップロード中..." : "PDFを追加"}
-            </p>
-          </div>
+          <UploadDropzone
+            onFiles={uploadFiles}
+            uploading={uploading}
+            progressLabel={uploadProgress || undefined}
+            size="compact"
+          />
           {uploadError && (
             <p className="text-xs text-red-600 dark:text-red-400">{uploadError}</p>
           )}
@@ -224,6 +203,16 @@ export default function FolderPage() {
             >
               暗記
             </button>
+            <button
+              onClick={() => setActiveTab("cram")}
+              className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                activeTab === "cram"
+                  ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                  : "border-transparent text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+              }`}
+            >
+              テスト直前
+            </button>
           </div>
 
           <div className="flex-1 overflow-hidden">
@@ -241,6 +230,11 @@ export default function FolderPage() {
                 {visitedTabs.has("memorize") && (
                   <div className={activeTab === "memorize" ? "h-full" : "hidden"}>
                     <FolderMemorizeView folderId={folderId} />
+                  </div>
+                )}
+                {visitedTabs.has("cram") && (
+                  <div className={activeTab === "cram" ? "h-full" : "hidden"}>
+                    <FolderCramView folderId={folderId} />
                   </div>
                 )}
               </>

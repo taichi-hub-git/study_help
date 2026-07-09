@@ -6,14 +6,18 @@ export const featureSchema = z.enum([
   "flashcards",
   "mindmap",
   "memorize",
+  "cram",
 ]);
 export type Feature = z.infer<typeof featureSchema>;
 
 export const difficultySchema = z.enum(["easy", "medium", "hard"]);
 export type Difficulty = z.infer<typeof difficultySchema>;
 
-export const folderFeatureSchema = z.enum(["quiz", "memorize"]);
+export const folderFeatureSchema = z.enum(["quiz", "memorize", "cram"]);
 export type FolderFeature = z.infer<typeof folderFeatureSchema>;
+
+export const cramBasisSchema = z.enum(["emphasized", "inference"]);
+export type CramBasis = z.infer<typeof cramBasisSchema>;
 
 // --- DB record shapes -------------------------------------------------
 
@@ -37,6 +41,7 @@ export interface PdfPageRecord {
   pdfId: string;
   pageNumber: number;
   text: string;
+  emphasizedText: string;
 }
 
 export interface GenerationRecord {
@@ -83,6 +88,9 @@ export type FolderQuizGenParams = z.infer<typeof folderQuizGenParamsSchema>;
 
 export const folderMemorizeGenParamsSchema = z.object({});
 export type FolderMemorizeGenParams = z.infer<typeof folderMemorizeGenParamsSchema>;
+
+export const folderCramGenParamsSchema = z.object({});
+export type FolderCramGenParams = z.infer<typeof folderCramGenParamsSchema>;
 
 export const summaryGenParamsSchema = z.object({});
 export type SummaryGenParams = z.infer<typeof summaryGenParamsSchema>;
@@ -166,3 +174,16 @@ export const folderMemorizeResultSchema = z.object({
   items: z.array(folderMemorizeItemSchema).min(1),
 });
 export type FolderMemorizeResult = z.infer<typeof folderMemorizeResultSchema>;
+
+export const folderCramItemSchema = z.object({
+  point: z.string(),
+  basis: cramBasisSchema,
+  sourcePdfIndex: z.number().int().min(1),
+  sourcePage: z.number().int().min(1),
+});
+export type FolderCramItem = z.infer<typeof folderCramItemSchema>;
+
+export const folderCramResultSchema = z.object({
+  items: z.array(folderCramItemSchema).min(1),
+});
+export type FolderCramResult = z.infer<typeof folderCramResultSchema>;

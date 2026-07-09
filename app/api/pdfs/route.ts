@@ -51,13 +51,13 @@ export async function POST(req: NextRequest) {
     "INSERT INTO pdfs (id, filename, filepath, uploadedAt, pageCount, folderId) VALUES (?, ?, ?, ?, ?, ?)"
   );
   const insertPage = db.prepare(
-    "INSERT INTO pdf_pages (id, pdfId, pageNumber, text) VALUES (?, ?, ?, ?)"
+    "INSERT INTO pdf_pages (id, pdfId, pageNumber, text, emphasizedText) VALUES (?, ?, ?, ?, ?)"
   );
 
   const tx = db.transaction(() => {
     insertPdf.run(id, file.name, filepath, uploadedAt, pages.length, folderId);
     for (const page of pages) {
-      insertPage.run(randomUUID(), id, page.pageNumber, page.text);
+      insertPage.run(randomUUID(), id, page.pageNumber, page.text, page.emphasizedText);
     }
   });
   tx();

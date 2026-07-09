@@ -18,6 +18,22 @@ export function getGeminiClient(): GoogleGenAI {
   return client;
 }
 
+/** Gemini's 429 body includes a RetryInfo detail with a suggested wait
+ * (e.g. `{"retryDelay": "36s"}`) — pull it out so the message can tell the
+ * user how long, instead of just "wait a bit". Returns null if absent/unparseable. */
+function extractRetryDelaySeconds(message: string): number | null {
+  try {
+    const details = JSON.parse(message)?.error?.details ?? [];
+    for (const detail of details) {
+      const match = typeof detail.retryDelay === "string" && detail.retryDelay.match(/^(\d+(?:\.\d+)?)s$/);
+      if (match) return Math.ceil(Number(match[1]));
+    }
+  } catch {
+    // message wasn't JSON or didn't have this shape — no delay to report
+  }
+  return null;
+}
+
 /** Maps an error from a Gemini API call to a short, actionable Japanese
  * message instead of leaking raw SDK/HTTP error bodies to the UI. */
 export function describeGeminiError(e: unknown): string {
@@ -31,7 +47,10 @@ export function describeGeminiError(e: unknown): string {
       return "APIキーが正しくありません。.env.local の GEMINI_API_KEY を確認してください。";
     }
     if (e.status === 429) {
-      return "APIのレート制限に達しました。しばらく待ってから再度お試しください。";
+      const retrySeconds = extractRetryDelaySeconds(e.message);
+      return retrySeconds
+        ? `APIのレート制限に達しました。${retrySeconds}秒ほど待ってから再度お試しください。`
+        : "APIのレート制限に達しました。しばらく待ってから再度お試しください。";
     }
     return `AI生成に失敗しました（${e.status}）。しばらく待ってから再度お試しください。`;
   }

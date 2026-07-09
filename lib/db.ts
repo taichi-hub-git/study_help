@@ -12,6 +12,24 @@ declare global {
   var __db: Database.Database | undefined;
 }
 
+/** Adds a column to a pre-existing table if missing. Must run before any
+ * statement (e.g. an index) that references the column, since a pre-existing
+ * table won't have picked it up from a CREATE TABLE IF NOT EXISTS. The
+ * existence check and the ALTER aren't atomic, and Next's build collects
+ * page data across several worker processes that each import this module
+ * concurrently, so a second worker can lose the race after the check but
+ * before its own ALTER runs — swallow exactly that "already applied" error. */
+function addColumnIfMissing(db: Database.Database, table: string, column: string, ddl: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (columns.some((c) => c.name === column)) return;
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  } catch (e) {
+    const isDuplicateColumn = e instanceof Error && /duplicate column name/i.test(e.message);
+    if (!isDuplicateColumn) throw e;
+  }
+}
+
 function createDb(): Database.Database {
   const db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
@@ -32,28 +50,6 @@ function createDb(): Database.Database {
       pageCount INTEGER NOT NULL,
       folderId TEXT REFERENCES folders(id) ON DELETE CASCADE
     );
-  `);
-
-  // Migration for databases created before folders existed — must run before
-  // any statement (like the index below) that references the new column,
-  // since a pre-existing pdfs table won't have picked it up from CREATE
-  // TABLE IF NOT EXISTS above. The existence check and the ALTER are not
-  // atomic, and Next's build collects page data across several worker
-  // processes that each import this module concurrently, so a second worker
-  // can lose the race after the check but before its own ALTER runs —
-  // swallow exactly that "already applied" error.
-  const pdfsColumns = db.prepare("PRAGMA table_info(pdfs)").all() as { name: string }[];
-  if (!pdfsColumns.some((c) => c.name === "folderId")) {
-    try {
-      db.exec("ALTER TABLE pdfs ADD COLUMN folderId TEXT REFERENCES folders(id) ON DELETE CASCADE");
-    } catch (e) {
-      const isDuplicateColumn = e instanceof Error && /duplicate column name/i.test(e.message);
-      if (!isDuplicateColumn) throw e;
-    }
-  }
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_pdfs_folderId ON pdfs(folderId);
 
     CREATE TABLE IF NOT EXISTS pdf_pages (
       id TEXT PRIMARY KEY,
@@ -61,6 +57,14 @@ function createDb(): Database.Database {
       pageNumber INTEGER NOT NULL,
       text TEXT NOT NULL
     );
+  `);
+
+  addColumnIfMissing(db, "pdfs", "folderId", "folderId TEXT REFERENCES folders(id) ON DELETE CASCADE");
+  addColumnIfMissing(db, "pdf_pages", "emphasizedText", "emphasizedText TEXT NOT NULL DEFAULT ''");
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_pdfs_folderId ON pdfs(folderId);
+
     CREATE INDEX IF NOT EXISTS idx_pdf_pages_pdfId ON pdf_pages(pdfId);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pdf_pages_pdfId_page ON pdf_pages(pdfId, pageNumber);
 

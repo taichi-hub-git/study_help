@@ -13,6 +13,22 @@ export interface FolderPdfSource {
   pages: PdfPageRecord[];
 }
 
+/** Same as pagesToSourceText, but also notes which text was rendered in a
+ * non-black/gray color in the original PDF (e.g. red emphasis text common in
+ * Japanese study slides) — a strong "this may be tested" signal used by the
+ * folder-wide cram feature. */
+function pagesToSourceTextWithEmphasis(pages: PdfPageRecord[]): string {
+  return pages
+    .sort((a, b) => a.pageNumber - b.pageNumber)
+    .map((p) => {
+      const emphasisNote = p.emphasizedText
+        ? `\n[このページで色付き(赤字など)で強調されていたテキスト: ${p.emphasizedText}]`
+        : "";
+      return `=== Page ${p.pageNumber} ===\n${p.text}${emphasisNote}`;
+    })
+    .join("\n\n");
+}
+
 /** Combines multiple PDFs' page text into one prompt, tagging each with a
  * 1-based index the model echoes back as `sourcePdfIndex` (safer than
  * trusting it to reproduce an opaque pdfId). */
@@ -20,7 +36,7 @@ export function pagesToFolderSourceText(pdfs: FolderPdfSource[]): string {
   return pdfs
     .map(
       (pdf, i) =>
-        `### 資料${i + 1}: ${pdf.filename}\n${pagesToSourceText(pdf.pages)}`
+        `### 資料${i + 1}: ${pdf.filename}\n${pagesToSourceTextWithEmphasis(pdf.pages)}`
     )
     .join("\n\n");
 }
@@ -202,5 +218,33 @@ ${sourceText}
 - sourcePdfIndex はその項目の根拠となる資料の番号(「### 資料N」の N)。
 - sourcePage はその項目の根拠となる、資料中のページ番号(Page N の N)。
 - 重要度の高いものを資料全体から15〜40項目程度に絞ってください。
+- 出力はこのJSONオブジェクトのみ。`;
+}
+
+export function folderCramSystemPrompt(): string {
+  return JSON_ONLY_SYSTEM;
+}
+
+export function folderCramUserPrompt(sourceText: string): string {
+  return `以下は複数の講義PDFから抽出したテキストです。「### 資料N: ファイル名」で資料の区切りを、「=== Page N ===」でページの区切りを示しています。
+一部のページには「[このページで色付き(赤字など)で強調されていたテキスト: ...]」という注記があり、これは元のPDFで赤字などの色付きで強調されていた（＝作成者が重要だと考えている可能性が高い）テキストです。
+
+${sourceText}
+
+これはテスト直前の一夜漬け用に、試験に出る可能性が高い項目だけを凝縮してまとめる機能です。次の2種類の項目を抽出してください:
+1. "emphasized": 上記の色付き強調テキストの注記に基づく項目（元の資料で強調されていた内容）。
+2. "inference": 強調の注記はなくても、定義・公式・繰り返し出てくる概念・「重要」「試験に出る」等の文脈など、内容の性質からあなたが試験に出る可能性が高いと判断した項目。
+
+以下の形式のJSONオブジェクトのみを出力してください:
+{
+  "items": [
+    { "point": "覚えるべき内容を簡潔にまとめた一文", "basis": "emphasized", "sourcePdfIndex": 1, "sourcePage": 1 }
+  ]
+}
+- basis は "emphasized" か "inference" のいずれか。
+- sourcePdfIndex はその項目の根拠となる資料の番号(「### 資料N」の N)。
+- sourcePage はその項目の根拠となる、資料中のページ番号(Page N の N)。
+- point は暗記できる粒度の簡潔な一文にしてください（長い説明文にしない）。
+- 重要度の高い順に、資料全体から15〜40項目程度に絞ってください。
 - 出力はこのJSONオブジェクトのみ。`;
 }

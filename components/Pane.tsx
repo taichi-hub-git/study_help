@@ -19,12 +19,16 @@ const PdfViewerTab = dynamic(() => import("@/components/tabs/PdfViewerTab"), {
 export default function Pane({
   pdfId,
   initialTab = "pdf",
+  initialJumpPage,
 }: {
   pdfId: string;
   initialTab?: TabId;
+  initialJumpPage?: number;
 }) {
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
-  const [jumpRequest, setJumpRequest] = useState<JumpRequest | null>(null);
+  const [jumpRequest, setJumpRequest] = useState<JumpRequest | null>(() =>
+    initialJumpPage ? { page: initialJumpPage, nonce: Date.now() } : null
+  );
 
   // Tabs stay mounted (just hidden) once visited, instead of being
   // unmounted on switch, so in-progress state (e.g. a quiz in progress)

@@ -8,6 +8,23 @@ export function pagesToSourceText(pages: PdfPageRecord[]): string {
     .join("\n\n");
 }
 
+export interface FolderPdfSource {
+  filename: string;
+  pages: PdfPageRecord[];
+}
+
+/** Combines multiple PDFs' page text into one prompt, tagging each with a
+ * 1-based index the model echoes back as `sourcePdfIndex` (safer than
+ * trusting it to reproduce an opaque pdfId). */
+export function pagesToFolderSourceText(pdfs: FolderPdfSource[]): string {
+  return pdfs
+    .map(
+      (pdf, i) =>
+        `### 資料${i + 1}: ${pdf.filename}\n${pagesToSourceText(pdf.pages)}`
+    )
+    .join("\n\n");
+}
+
 const JSON_ONLY_SYSTEM =
   "あなたは講義資料から学習教材を生成するアシスタントです。" +
   "出力は指示されたJSONのみを返してください。前置き、説明、Markdown装飾（```json など）は一切つけないこと。" +
@@ -124,5 +141,66 @@ ${sourceText}
 }
 - sourcePage はその項目の根拠となる、資料中のページ番号(Page N の N)。
 - 重要度の高いものを10〜30項目程度に絞ってください。
+- 出力はこのJSONオブジェクトのみ。`;
+}
+
+export function folderQuizSystemPrompt(): string {
+  return JSON_ONLY_SYSTEM;
+}
+
+export function folderQuizUserPrompt(
+  sourceText: string,
+  params: { difficulty: Difficulty; topic: string; questionCount: number }
+): string {
+  const topicLine = params.topic
+    ? `出題範囲・トピックの指定: ${params.topic}\n`
+    : "出題範囲・トピックの指定: なし（資料全体から出題）\n";
+  return `以下は複数の講義PDFから抽出したテキストです。「### 資料N: ファイル名」で資料の区切りを、「=== Page N ===」でページの区切りを示しています。
+
+${sourceText}
+
+上記の複数資料の内容を横断して、4択クイズを**ちょうど${params.questionCount}問**作成してください。
+難易度: ${difficultyLabel[params.difficulty]}
+${topicLine}
+各問題は以下の形式のJSONオブジェクトにしてください:
+{
+  "questions": [
+    {
+      "question": "設問文",
+      "options": ["選択肢1", "選択肢2", "選択肢3", "選択肢4"],
+      "answerIndex": 0,
+      "explanation": "なぜその答えが正しいかの解説",
+      "sourcePdfIndex": 1,
+      "sourcePage": 1
+    }
+  ]
+}
+- options は必ず4つ。
+- answerIndex は正解の選択肢のインデックス(0始まり)。
+- sourcePdfIndex はその設問の根拠となる資料の番号(「### 資料N」の N)。
+- sourcePage はその設問の根拠となる、資料中のページ番号(Page N の N)。
+- questions 配列はちょうど${params.questionCount}個にしてください。
+- 出力はこのJSONオブジェクトのみ。`;
+}
+
+export function folderMemorizeSystemPrompt(): string {
+  return JSON_ONLY_SYSTEM;
+}
+
+export function folderMemorizeUserPrompt(sourceText: string): string {
+  return `以下は複数の講義PDFから抽出したテキストです。「### 資料N: ファイル名」で資料の区切りを、「=== Page N ===」でページの区切りを示しています。
+
+${sourceText}
+
+上記の複数資料の内容を横断して、試験対策として**暗記すべき項目**（重要用語・定義・公式・年号など）を抽出してください。
+以下の形式のJSONオブジェクトのみを出力してください:
+{
+  "items": [
+    { "term": "用語・項目名", "description": "説明・定義", "sourcePdfIndex": 1, "sourcePage": 1 }
+  ]
+}
+- sourcePdfIndex はその項目の根拠となる資料の番号(「### 資料N」の N)。
+- sourcePage はその項目の根拠となる、資料中のページ番号(Page N の N)。
+- 重要度の高いものを資料全体から15〜40項目程度に絞ってください。
 - 出力はこのJSONオブジェクトのみ。`;
 }

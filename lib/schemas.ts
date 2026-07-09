@@ -12,7 +12,16 @@ export type Feature = z.infer<typeof featureSchema>;
 export const difficultySchema = z.enum(["easy", "medium", "hard"]);
 export type Difficulty = z.infer<typeof difficultySchema>;
 
+export const folderFeatureSchema = z.enum(["quiz", "memorize"]);
+export type FolderFeature = z.infer<typeof folderFeatureSchema>;
+
 // --- DB record shapes -------------------------------------------------
+
+export interface FolderRecord {
+  id: string;
+  name: string;
+  createdAt: string;
+}
 
 export interface PdfRecord {
   id: string;
@@ -20,6 +29,7 @@ export interface PdfRecord {
   filepath: string;
   uploadedAt: string;
   pageCount: number;
+  folderId: string | null;
 }
 
 export interface PdfPageRecord {
@@ -33,6 +43,15 @@ export interface GenerationRecord {
   id: string;
   pdfId: string;
   feature: Feature;
+  params: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface FolderGenerationRecord {
+  id: string;
+  folderId: string;
+  feature: FolderFeature;
   params: string;
   content: string;
   createdAt: string;
@@ -54,6 +73,16 @@ export type MindmapGenParams = z.infer<typeof mindmapGenParamsSchema>;
 
 export const memorizeGenParamsSchema = z.object({});
 export type MemorizeGenParams = z.infer<typeof memorizeGenParamsSchema>;
+
+export const folderQuizGenParamsSchema = z.object({
+  difficulty: difficultySchema.default("medium"),
+  topic: z.string().trim().max(500).default(""),
+  questionCount: z.number().int().min(1).max(50).default(10),
+});
+export type FolderQuizGenParams = z.infer<typeof folderQuizGenParamsSchema>;
+
+export const folderMemorizeGenParamsSchema = z.object({});
+export type FolderMemorizeGenParams = z.infer<typeof folderMemorizeGenParamsSchema>;
 
 export const summaryGenParamsSchema = z.object({});
 export type SummaryGenParams = z.infer<typeof summaryGenParamsSchema>;
@@ -102,3 +131,38 @@ export const memorizeResultSchema = z.object({
   items: z.array(memorizeItemSchema).min(1),
 });
 export type MemorizeResult = z.infer<typeof memorizeResultSchema>;
+
+// --- Folder-scoped (multi-PDF) AI output shapes --------------------------
+// `sourcePdfIndex` is a 1-based index into the list of PDFs given to the
+// model in the prompt (not a real pdfId — safer than trusting the model to
+// echo back an opaque UUID correctly); the server maps it back to a pdfId.
+
+export const folderQuizQuestionSchema = z.object({
+  question: z.string(),
+  options: z.array(z.string()).length(4),
+  answerIndex: z.number().int().min(0).max(3),
+  explanation: z.string(),
+  sourcePdfIndex: z.number().int().min(1),
+  sourcePage: z.number().int().min(1),
+});
+export type FolderQuizQuestion = z.infer<typeof folderQuizQuestionSchema>;
+
+export function buildFolderQuizSchema(questionCount: number) {
+  return z.object({
+    questions: z.array(folderQuizQuestionSchema).length(questionCount),
+  });
+}
+export type FolderQuiz = { questions: FolderQuizQuestion[] };
+
+export const folderMemorizeItemSchema = z.object({
+  term: z.string(),
+  description: z.string(),
+  sourcePdfIndex: z.number().int().min(1),
+  sourcePage: z.number().int().min(1),
+});
+export type FolderMemorizeItem = z.infer<typeof folderMemorizeItemSchema>;
+
+export const folderMemorizeResultSchema = z.object({
+  items: z.array(folderMemorizeItemSchema).min(1),
+});
+export type FolderMemorizeResult = z.infer<typeof folderMemorizeResultSchema>;

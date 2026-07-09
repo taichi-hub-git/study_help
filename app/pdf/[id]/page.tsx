@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Pane from "@/components/Pane";
 import type { PdfRecord } from "@/lib/schemas";
@@ -9,7 +9,10 @@ import type { PdfRecord } from "@/lib/schemas";
 export default function PdfPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const pdfId = params.id;
+  const pageParam = searchParams.get("page");
+  const initialJumpPage = pageParam ? parseInt(pageParam, 10) : undefined;
 
   const [pdfs, setPdfs] = useState<PdfRecord[] | null>(null);
   const [dualPane, setDualPane] = useState(false);
@@ -81,14 +84,24 @@ export default function PdfPage() {
         {dualPane ? (
           <>
             <div className="flex w-1/2 flex-col border-r border-zinc-200 dark:border-zinc-800">
-              <Pane key={`${pdfId}-left`} pdfId={pdfId} initialTab="pdf" />
+              <Pane
+                key={`${pdfId}-left`}
+                pdfId={pdfId}
+                initialTab="pdf"
+                initialJumpPage={initialJumpPage}
+              />
             </div>
             <div className="flex w-1/2 flex-col">
               <Pane key={`${pdfId}-right`} pdfId={pdfId} initialTab="quiz" />
             </div>
           </>
         ) : (
-          <Pane key={pdfId} pdfId={pdfId} initialTab="pdf" />
+          <Pane
+            key={pdfId}
+            pdfId={pdfId}
+            initialTab="pdf"
+            initialJumpPage={initialJumpPage}
+          />
         )}
       </main>
     </div>

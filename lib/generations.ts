@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import type { Feature, GenerationRecord, PdfPageRecord } from "@/lib/schemas";
 
-function canonicalParams(params: unknown): string {
+export function canonicalParams(params: unknown): string {
   return JSON.stringify(params, Object.keys(params as object).sort());
 }
 

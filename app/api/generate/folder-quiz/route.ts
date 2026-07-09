@@ -4,10 +4,10 @@ import { describeGeminiError } from "@/lib/gemini";
 import { generateValidatedJson } from "@/lib/generateJson";
 import {
   getCachedFolderGeneration,
-  getFolderPdfSources,
+  getFolderPdfSummaries,
   saveFolderGeneration,
 } from "@/lib/folderGenerations";
-import { folderQuizSystemPrompt, folderQuizUserPrompt, pagesToFolderSourceText } from "@/lib/prompts";
+import { folderQuizSystemPrompt, folderQuizUserPrompt, summariesToFolderSourceText } from "@/lib/prompts";
 import { buildFolderQuizSchema, folderQuizGenParamsSchema } from "@/lib/schemas";
 
 const requestSchema = z.object({
@@ -43,14 +43,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const sources = getFolderPdfSources(folderId);
+  const { summaries: sources, failedFilenames } = await getFolderPdfSummaries(folderId);
   if (sources.length === 0) {
     return NextResponse.json(
-      { error: "フォルダにPDFがありません" },
-      { status: 404 }
+      {
+        error:
+          failedFilenames.length > 0
+            ? `${failedFilenames.join("、")} の要約生成に失敗しました。しばらく待ってから再度お試しください。`
+            : "フォルダにPDFがありません",
+      },
+      { status: failedFilenames.length > 0 ? 500 : 404 }
     );
   }
-  const sourceText = pagesToFolderSourceText(sources);
+  const sourceText = summariesToFolderSourceText(sources);
   const pdfIndex = sources.map((s) => ({ pdfId: s.pdfId, filename: s.filename }));
 
   try {
@@ -62,7 +67,11 @@ export async function POST(req: NextRequest) {
     );
     const stored: StoredFolderQuiz = { quiz, pdfIndex };
     saveFolderGeneration(folderId, "quiz", params, JSON.stringify(stored));
-    return NextResponse.json({ ...stored, cached: false });
+    return NextResponse.json({
+      ...stored,
+      cached: false,
+      failedFilenames: failedFilenames.length > 0 ? failedFilenames : undefined,
+    });
   } catch (e) {
     return NextResponse.json({ error: describeGeminiError(e) }, { status: 500 });
   }

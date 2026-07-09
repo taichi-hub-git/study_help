@@ -7,13 +7,16 @@ export const featureSchema = z.enum([
   "mindmap",
   "memorize",
   "cram",
+  "memorizeCandidates",
 ]);
 export type Feature = z.infer<typeof featureSchema>;
 
 export const difficultySchema = z.enum(["easy", "medium", "hard"]);
 export type Difficulty = z.infer<typeof difficultySchema>;
 
-export const folderFeatureSchema = z.enum(["quiz", "memorize"]);
+// Folder-scoped generations table is only used by folder-quiz now — cram and
+// folder-memorize instead aggregate cached per-PDF results (see below).
+export const folderFeatureSchema = z.enum(["quiz"]);
 export type FolderFeature = z.infer<typeof folderFeatureSchema>;
 
 export const cramBasisSchema = z.enum(["emphasized", "inference"]);
@@ -86,8 +89,8 @@ export const folderQuizGenParamsSchema = z.object({
 });
 export type FolderQuizGenParams = z.infer<typeof folderQuizGenParamsSchema>;
 
-export const folderMemorizeGenParamsSchema = z.object({});
-export type FolderMemorizeGenParams = z.infer<typeof folderMemorizeGenParamsSchema>;
+export const memorizeCandidateGenParamsSchema = z.object({});
+export type MemorizeCandidateGenParams = z.infer<typeof memorizeCandidateGenParamsSchema>;
 
 export const cramGenParamsSchema = z.object({});
 export type CramGenParams = z.infer<typeof cramGenParamsSchema>;
@@ -151,7 +154,9 @@ export const folderQuizQuestionSchema = z.object({
   answerIndex: z.number().int().min(0).max(3),
   explanation: z.string(),
   sourcePdfIndex: z.number().int().min(1),
-  sourcePage: z.number().int().min(1),
+  // Optional: the source is now each PDF's summary rather than paginated
+  // full text, so the model can't always ground a question in a specific page.
+  sourcePage: z.number().int().min(1).optional(),
 });
 export type FolderQuizQuestion = z.infer<typeof folderQuizQuestionSchema>;
 
@@ -161,19 +166,6 @@ export function buildFolderQuizSchema(questionCount: number) {
   });
 }
 export type FolderQuiz = { questions: FolderQuizQuestion[] };
-
-export const folderMemorizeItemSchema = z.object({
-  term: z.string(),
-  description: z.string(),
-  sourcePdfIndex: z.number().int().min(1),
-  sourcePage: z.number().int().min(1),
-});
-export type FolderMemorizeItem = z.infer<typeof folderMemorizeItemSchema>;
-
-export const folderMemorizeResultSchema = z.object({
-  items: z.array(folderMemorizeItemSchema).min(1),
-});
-export type FolderMemorizeResult = z.infer<typeof folderMemorizeResultSchema>;
 
 // --- Per-PDF cram ("テスト直前") ------------------------------------------
 // Generated from that PDF's summary + its own emphasized-text spans (not
@@ -196,6 +188,31 @@ export const cramResultSchema = z.object({
 export type CramResult = z.infer<typeof cramResultSchema>;
 
 export interface AggregatedCramItem extends CramItem {
+  pdfId: string;
+  filename: string;
+}
+
+// --- Per-PDF memorize candidates (used only by the folder-wide 暗記 view) --
+// Same idea as cram: generated from that PDF's summary + emphasized-text
+// spans, cached per PDF, and the folder view is just an aggregation of
+// these — no folder-level AI call. Distinct from the full-text-based
+// per-PDF "memorize" feature used by that PDF's own 暗記 tab, which stays
+// full-text since it's already bounded to one PDF and benefits from the
+// extra detail.
+
+export const memorizeCandidateItemSchema = z.object({
+  term: z.string(),
+  description: z.string(),
+  sourcePage: z.number().int().min(1).optional(),
+});
+export type MemorizeCandidateItem = z.infer<typeof memorizeCandidateItemSchema>;
+
+export const memorizeCandidateResultSchema = z.object({
+  items: z.array(memorizeCandidateItemSchema).min(1),
+});
+export type MemorizeCandidateResult = z.infer<typeof memorizeCandidateResultSchema>;
+
+export interface AggregatedMemorizeCandidateItem extends MemorizeCandidateItem {
   pdfId: string;
   filename: string;
 }

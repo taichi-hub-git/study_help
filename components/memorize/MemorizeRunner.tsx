@@ -16,6 +16,7 @@ export default function MemorizeRunner<I extends BaseMemorizeItem>({
   items,
   loading,
   error,
+  warning,
   onRegenerate,
   renderSource,
   title = "暗記",
@@ -23,6 +24,8 @@ export default function MemorizeRunner<I extends BaseMemorizeItem>({
   items: I[] | null;
   loading: boolean;
   error: string | null;
+  /** Non-fatal notice shown above the content (e.g. "some PDFs failed, showing the rest"). */
+  warning?: string;
   onRegenerate: () => void;
   renderSource: (item: I) => ReactNode;
   title?: string;
@@ -85,6 +88,11 @@ export default function MemorizeRunner<I extends BaseMemorizeItem>({
         {error && (
           <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
             {error}
+          </div>
+        )}
+        {!error && warning && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            {warning}
           </div>
         )}
         {!error && loading && !items && (

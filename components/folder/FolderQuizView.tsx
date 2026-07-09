@@ -24,6 +24,7 @@ export default function FolderQuizView({ folderId }: { folderId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [quiz, setQuiz] = useState<FolderQuiz | null>(null);
   const [pdfIndex, setPdfIndex] = useState<PdfIndexEntry[]>([]);
+  const [failedFilenames, setFailedFilenames] = useState<string[]>([]);
   const [runId, setRunId] = useState(0);
 
   const startQuiz = async (regenerate: boolean) => {
@@ -39,6 +40,7 @@ export default function FolderQuizView({ folderId }: { folderId: string }) {
       if (!res.ok) throw new Error(data.error ?? "クイズの生成に失敗しました");
       setQuiz(data.quiz as FolderQuiz);
       setPdfIndex(data.pdfIndex as PdfIndexEntry[]);
+      setFailedFilenames(data.failedFilenames ?? []);
       setRunId((id) => id + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "クイズの生成に失敗しました");
@@ -59,12 +61,13 @@ export default function FolderQuizView({ folderId }: { folderId: string }) {
           if (!src) return null;
           return (
             <Link
-              href={`/pdf/${src.pdfId}?page=${q.sourcePage}`}
+              href={`/pdf/${src.pdfId}${q.sourcePage ? `?page=${q.sourcePage}` : ""}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 underline hover:no-underline dark:text-blue-400"
             >
-              該当ページ（{src.filename} p.{q.sourcePage}）を見る
+              該当資料（{src.filename}
+              {q.sourcePage ? ` p.${q.sourcePage}` : ""}）を見る
             </Link>
           );
         }}
@@ -135,6 +138,11 @@ export default function FolderQuizView({ folderId }: { folderId: string }) {
         {error && (
           <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
             {error}
+          </div>
+        )}
+        {!error && failedFilenames.length > 0 && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            {failedFilenames.join("、")} の要約生成に失敗したため、前回のテストではこれらのPDFの内容が含まれていません。
           </div>
         )}
 

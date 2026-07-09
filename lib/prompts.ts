@@ -8,36 +8,20 @@ export function pagesToSourceText(pages: PdfPageRecord[]): string {
     .join("\n\n");
 }
 
-export interface FolderPdfSource {
+export interface FolderPdfSummary {
   filename: string;
-  pages: PdfPageRecord[];
+  summary: string;
 }
 
-/** Same as pagesToSourceText, but also notes which text was rendered in a
- * non-black/gray color in the original PDF (e.g. red emphasis text common in
- * Japanese study slides) — a strong "this may be tested" signal used by the
- * folder-wide cram feature. */
-function pagesToSourceTextWithEmphasis(pages: PdfPageRecord[]): string {
-  return pages
-    .sort((a, b) => a.pageNumber - b.pageNumber)
-    .map((p) => {
-      const emphasisNote = p.emphasizedText
-        ? `\n[このページで色付き(赤字など)で強調されていたテキスト: ${p.emphasizedText}]`
-        : "";
-      return `=== Page ${p.pageNumber} ===\n${p.text}${emphasisNote}`;
-    })
-    .join("\n\n");
-}
-
-/** Combines multiple PDFs' page text into one prompt, tagging each with a
- * 1-based index the model echoes back as `sourcePdfIndex` (safer than
- * trusting it to reproduce an opaque pdfId). */
-export function pagesToFolderSourceText(pdfs: FolderPdfSource[]): string {
+/** Combines each PDF's summary (not raw page text) into one prompt, tagging
+ * each with a 1-based index the model echoes back as `sourcePdfIndex` (safer
+ * than trusting it to reproduce an opaque pdfId). Folder-quiz stays a single
+ * combined call (it needs to see everything at once to hit an exact question
+ * count and respect a topic filter across PDFs), but building it from
+ * summaries instead of full text is what keeps that one call cheap. */
+export function summariesToFolderSourceText(pdfs: FolderPdfSummary[]): string {
   return pdfs
-    .map(
-      (pdf, i) =>
-        `### 資料${i + 1}: ${pdf.filename}\n${pagesToSourceTextWithEmphasis(pdf.pages)}`
-    )
+    .map((pdf, i) => `### 資料${i + 1}: ${pdf.filename}\n${pdf.summary}`)
     .join("\n\n");
 }
 
@@ -171,7 +155,7 @@ export function folderQuizUserPrompt(
   const topicLine = params.topic
     ? `出題範囲・トピックの指定: ${params.topic}\n`
     : "出題範囲・トピックの指定: なし（資料全体から出題）\n";
-  return `以下は複数の講義PDFから抽出したテキストです。「### 資料N: ファイル名」で資料の区切りを、「=== Page N ===」でページの区切りを示しています。
+  return `以下は複数の講義PDFの要約です。「### 資料N: ファイル名」で資料の区切りを示しています。
 
 ${sourceText}
 
@@ -194,30 +178,8 @@ ${topicLine}
 - options は必ず4つ。
 - answerIndex は正解の選択肢のインデックス(0始まり)。
 - sourcePdfIndex はその設問の根拠となる資料の番号(「### 資料N」の N)。
-- sourcePage はその設問の根拠となる、資料中のページ番号(Page N の N)。
+- sourcePage は要約から判断できる場合のみ入れてください（要約はページ番号を保持していないため、判断できなければ省略してください）。
 - questions 配列はちょうど${params.questionCount}個にしてください。
-- 出力はこのJSONオブジェクトのみ。`;
-}
-
-export function folderMemorizeSystemPrompt(): string {
-  return JSON_ONLY_SYSTEM;
-}
-
-export function folderMemorizeUserPrompt(sourceText: string): string {
-  return `以下は複数の講義PDFから抽出したテキストです。「### 資料N: ファイル名」で資料の区切りを、「=== Page N ===」でページの区切りを示しています。
-
-${sourceText}
-
-上記の複数資料の内容を横断して、試験対策として**暗記すべき項目**（重要用語・定義・公式・年号など）を抽出してください。
-以下の形式のJSONオブジェクトのみを出力してください:
-{
-  "items": [
-    { "term": "用語・項目名", "description": "説明・定義", "sourcePdfIndex": 1, "sourcePage": 1 }
-  ]
-}
-- sourcePdfIndex はその項目の根拠となる資料の番号(「### 資料N」の N)。
-- sourcePage はその項目の根拠となる、資料中のページ番号(Page N の N)。
-- 重要度の高いものを資料全体から15〜40項目程度に絞ってください。
 - 出力はこのJSONオブジェクトのみ。`;
 }
 
@@ -266,5 +228,35 @@ ${emphasizedSpansText}
 - sourcePage は、"emphasized" の項目については根拠にした強調テキストのページ番号(p.N の N)を必ず入れてください。"inference" の項目は、要約のどのあたりの内容か判断できる場合のみ入れ、判断できなければ省略してください。
 - point は暗記できる粒度の簡潔な一文にしてください（長い説明文にしない）。
 - 重要度の高い順に、5〜15項目程度に絞ってください。
+- 出力はこのJSONオブジェクトのみ。`;
+}
+
+export function memorizeCandidateSystemPrompt(): string {
+  return JSON_ONLY_SYSTEM;
+}
+
+/** Same input strategy as cram (summary + emphasized spans, not raw full
+ * text) — this is what the folder-wide 暗記 view aggregates across PDFs. */
+export function memorizeCandidateUserPrompt(
+  summaryText: string,
+  emphasizedSpansText: string
+): string {
+  return `以下はある講義PDFの要約と、そのPDF内で色付き(赤字など)で強調されていたテキストの抜粋です。
+
+【要約】
+${summaryText}
+
+【色付きで強調されていたテキスト（ページ番号つき）】
+${emphasizedSpansText}
+
+上記の内容から、試験対策として**暗記すべき項目**（重要用語・定義・公式・年号など）を抽出してください。
+以下の形式のJSONオブジェクトのみを出力してください:
+{
+  "items": [
+    { "term": "用語・項目名", "description": "説明・定義", "sourcePage": 1 }
+  ]
+}
+- sourcePage は、強調されていたテキストが根拠になっている場合はそのページ番号(p.N の N)を入れてください。要約のみから判断した項目で根拠ページが分からなければ省略してください。
+- 重要度の高いものを5〜20項目程度に絞ってください。
 - 出力はこのJSONオブジェクトのみ。`;
 }

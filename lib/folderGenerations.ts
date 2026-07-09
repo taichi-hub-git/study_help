@@ -2,8 +2,9 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { canonicalParams } from "@/lib/generations";
+import { ensureSummary } from "@/lib/summaryGeneration";
 import type { FolderFeature, FolderGenerationRecord, PdfRecord } from "@/lib/schemas";
-import type { FolderPdfSource } from "@/lib/prompts";
+import type { FolderPdfSummary } from "@/lib/prompts";
 
 export function getCachedFolderGeneration(
   folderId: string,
@@ -45,15 +46,29 @@ export function getFolderPdfs(folderId: string): PdfRecord[] {
     .all(folderId) as PdfRecord[];
 }
 
-/** Loads every PDF in the folder along with its page text, in the same
- * order used to build the prompt — callers must use this order to map a
- * model-returned `sourcePdfIndex` back to a real pdfId. */
-export function getFolderPdfSources(folderId: string): (FolderPdfSource & { pdfId: string })[] {
+/** Loads every PDF in the folder along with its summary (generating it if
+ * somehow still missing), in the same order used to build the prompt —
+ * callers must use this order to map a model-returned `sourcePdfIndex` back
+ * to a real pdfId. Used by folder-quiz, the one folder feature that still
+ * makes a single combined call across all PDFs. A PDF whose summary fails to
+ * generate (e.g. rate limit) is skipped rather than failing the whole
+ * request — its filename comes back in `failedFilenames`. */
+export async function getFolderPdfSummaries(
+  folderId: string
+): Promise<{ summaries: (FolderPdfSummary & { pdfId: string })[]; failedFilenames: string[] }> {
   const pdfs = getFolderPdfs(folderId);
-  const getPages = db.prepare("SELECT * FROM pdf_pages WHERE pdfId = ? ORDER BY pageNumber ASC");
-  return pdfs.map((pdf) => ({
-    pdfId: pdf.id,
-    filename: pdf.filename,
-    pages: getPages.all(pdf.id) as FolderPdfSource["pages"],
-  }));
+  // Sequential, not Promise.all: several PDFs missing a summary at once would
+  // otherwise fire that many concurrent Gemini calls, which is an easy way
+  // to trip the (quite low) per-minute rate limit on the free tier.
+  const summaries: (FolderPdfSummary & { pdfId: string })[] = [];
+  const failedFilenames: string[] = [];
+  for (const pdf of pdfs) {
+    try {
+      summaries.push({ pdfId: pdf.id, filename: pdf.filename, summary: await ensureSummary(pdf.id) });
+    } catch (e) {
+      console.error(`summary generation failed for pdf ${pdf.id}`, e);
+      failedFilenames.push(pdf.filename);
+    }
+  }
+  return { summaries, failedFilenames };
 }

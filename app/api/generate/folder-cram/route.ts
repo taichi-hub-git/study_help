@@ -1,66 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { describeGeminiError } from "@/lib/gemini";
-import { generateValidatedJson } from "@/lib/generateJson";
-import {
-  getCachedFolderGeneration,
-  getFolderPdfSources,
-  saveFolderGeneration,
-} from "@/lib/folderGenerations";
-import {
-  folderCramSystemPrompt,
-  folderCramUserPrompt,
-  pagesToFolderSourceText,
-} from "@/lib/prompts";
-import { folderCramGenParamsSchema, folderCramResultSchema } from "@/lib/schemas";
+import { ensureCram } from "@/lib/cramGeneration";
+import { getFolderPdfs } from "@/lib/folderGenerations";
+import type { AggregatedCramItem } from "@/lib/schemas";
 
 const requestSchema = z.object({
   folderId: z.string().min(1),
   regenerate: z.boolean().optional().default(false),
 });
 
-interface StoredFolderCram {
-  items: unknown[];
-  pdfIndex: { pdfId: string; filename: string }[];
-}
-
+/** The folder-wide cram view has no AI call of its own: it just ensures
+ * every PDF in the folder has its (cheap, summary-based) per-PDF cram
+ * generated, then concatenates them. Adding a new PDF to the folder only
+ * costs generating that one PDF's cram — everything already cached for the
+ * other PDFs is reused as-is. */
 export async function POST(req: NextRequest) {
   const body = requestSchema.safeParse(await req.json());
   if (!body.success) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
   const { folderId, regenerate } = body.data;
-  const params = folderCramGenParamsSchema.parse({});
 
-  if (!regenerate) {
-    const cached = getCachedFolderGeneration(folderId, "cram", params);
-    if (cached) {
-      const stored = JSON.parse(cached.content) as StoredFolderCram;
-      return NextResponse.json({ ...stored, cached: true });
+  const pdfs = getFolderPdfs(folderId);
+  if (pdfs.length === 0) {
+    return NextResponse.json({ error: "フォルダにPDFがありません" }, { status: 404 });
+  }
+
+  const items: AggregatedCramItem[] = [];
+  const failedFilenames: string[] = [];
+
+  for (const pdf of pdfs) {
+    try {
+      const pdfItems = await ensureCram(pdf.id, regenerate);
+      for (const item of pdfItems) {
+        items.push({ ...item, pdfId: pdf.id, filename: pdf.filename });
+      }
+    } catch (e) {
+      console.error(`cram generation failed for pdf ${pdf.id}`, e);
+      failedFilenames.push(pdf.filename);
     }
   }
 
-  const sources = getFolderPdfSources(folderId);
-  if (sources.length === 0) {
+  if (items.length === 0 && failedFilenames.length > 0) {
     return NextResponse.json(
-      { error: "フォルダにPDFがありません" },
-      { status: 404 }
+      { error: `${failedFilenames.join(", ")} の生成に失敗しました。しばらく待ってから再度お試しください。` },
+      { status: 500 }
     );
   }
-  const sourceText = pagesToFolderSourceText(sources);
-  const pdfIndex = sources.map((s) => ({ pdfId: s.pdfId, filename: s.filename }));
 
-  try {
-    const result = await generateValidatedJson(
-      "cram",
-      folderCramResultSchema,
-      folderCramSystemPrompt(),
-      folderCramUserPrompt(sourceText)
-    );
-    const stored: StoredFolderCram = { items: result.items, pdfIndex };
-    saveFolderGeneration(folderId, "cram", params, JSON.stringify(stored));
-    return NextResponse.json({ ...stored, cached: false });
-  } catch (e) {
-    return NextResponse.json({ error: describeGeminiError(e) }, { status: 500 });
-  }
+  return NextResponse.json({
+    items,
+    failedFilenames: failedFilenames.length > 0 ? failedFilenames : undefined,
+  });
 }

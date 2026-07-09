@@ -64,7 +64,7 @@ export default function UploadDropzone({
       />
       {uploading ? (
         <p className={size === "large" ? "text-sm text-zinc-600 dark:text-zinc-300" : "text-xs text-zinc-500 dark:text-zinc-400"}>
-          {progressLabel ?? "アップロード中・テキスト抽出中..."}
+          {progressLabel ?? "アップロード中・テキスト抽出＆要約生成中..."}
         </p>
       ) : size === "large" ? (
         <>

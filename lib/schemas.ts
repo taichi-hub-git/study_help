@@ -13,7 +13,7 @@ export type Feature = z.infer<typeof featureSchema>;
 export const difficultySchema = z.enum(["easy", "medium", "hard"]);
 export type Difficulty = z.infer<typeof difficultySchema>;
 
-export const folderFeatureSchema = z.enum(["quiz", "memorize", "cram"]);
+export const folderFeatureSchema = z.enum(["quiz", "memorize"]);
 export type FolderFeature = z.infer<typeof folderFeatureSchema>;
 
 export const cramBasisSchema = z.enum(["emphasized", "inference"]);
@@ -89,8 +89,8 @@ export type FolderQuizGenParams = z.infer<typeof folderQuizGenParamsSchema>;
 export const folderMemorizeGenParamsSchema = z.object({});
 export type FolderMemorizeGenParams = z.infer<typeof folderMemorizeGenParamsSchema>;
 
-export const folderCramGenParamsSchema = z.object({});
-export type FolderCramGenParams = z.infer<typeof folderCramGenParamsSchema>;
+export const cramGenParamsSchema = z.object({});
+export type CramGenParams = z.infer<typeof cramGenParamsSchema>;
 
 export const summaryGenParamsSchema = z.object({});
 export type SummaryGenParams = z.infer<typeof summaryGenParamsSchema>;
@@ -175,15 +175,27 @@ export const folderMemorizeResultSchema = z.object({
 });
 export type FolderMemorizeResult = z.infer<typeof folderMemorizeResultSchema>;
 
-export const folderCramItemSchema = z.object({
+// --- Per-PDF cram ("テスト直前") ------------------------------------------
+// Generated from that PDF's summary + its own emphasized-text spans (not
+// raw full text), and cached per PDF like the other per-PDF features. The
+// folder-wide cram view is just an aggregation of these — no separate
+// folder-level AI call. `sourcePage` is omitted for "inference" items that
+// aren't grounded in a specific emphasized span, since the summary they're
+// drawn from doesn't carry page numbers.
+
+export const cramItemSchema = z.object({
   point: z.string(),
   basis: cramBasisSchema,
-  sourcePdfIndex: z.number().int().min(1),
-  sourcePage: z.number().int().min(1),
+  sourcePage: z.number().int().min(1).optional(),
 });
-export type FolderCramItem = z.infer<typeof folderCramItemSchema>;
+export type CramItem = z.infer<typeof cramItemSchema>;
 
-export const folderCramResultSchema = z.object({
-  items: z.array(folderCramItemSchema).min(1),
+export const cramResultSchema = z.object({
+  items: z.array(cramItemSchema).min(1),
 });
-export type FolderCramResult = z.infer<typeof folderCramResultSchema>;
+export type CramResult = z.infer<typeof cramResultSchema>;
+
+export interface AggregatedCramItem extends CramItem {
+  pdfId: string;
+  filename: string;
+}

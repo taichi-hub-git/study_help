@@ -221,30 +221,50 @@ ${sourceText}
 - 出力はこのJSONオブジェクトのみ。`;
 }
 
-export function folderCramSystemPrompt(): string {
+/** Builds the "what was emphasized" block fed to the per-PDF cram prompt —
+ * only the short emphasized spans (with their real page numbers), not full
+ * page text, since cram is deliberately built from cheap inputs. */
+export function pagesToEmphasizedSpansText(pages: PdfPageRecord[]): string {
+  const withEmphasis = pages
+    .filter((p) => p.emphasizedText)
+    .sort((a, b) => a.pageNumber - b.pageNumber);
+  if (withEmphasis.length === 0) {
+    return "（このPDFでは色付きの強調テキストは検出されませんでした）";
+  }
+  return withEmphasis.map((p) => `[p.${p.pageNumber}で強調]: ${p.emphasizedText}`).join("\n");
+}
+
+export function cramSystemPrompt(): string {
   return JSON_ONLY_SYSTEM;
 }
 
-export function folderCramUserPrompt(sourceText: string): string {
-  return `以下は複数の講義PDFから抽出したテキストです。「### 資料N: ファイル名」で資料の区切りを、「=== Page N ===」でページの区切りを示しています。
-一部のページには「[このページで色付き(赤字など)で強調されていたテキスト: ...]」という注記があり、これは元のPDFで赤字などの色付きで強調されていた（＝作成者が重要だと考えている可能性が高い）テキストです。
+/** Cram deliberately takes the PDF's summary (cheap) plus its emphasized
+ * spans (cheap, and each already tagged with a real page number) instead of
+ * the full raw page text — this prompt is reused per PDF, and a folder's
+ * "テスト直前" view is just an aggregation of these, so keeping this input
+ * small is what keeps the whole feature affordable as folders grow. */
+export function cramUserPrompt(summaryText: string, emphasizedSpansText: string): string {
+  return `以下はある講義PDFの要約と、そのPDF内で色付き(赤字など)で強調されていたテキストの抜粋です。
 
-${sourceText}
+【要約】
+${summaryText}
+
+【色付きで強調されていたテキスト（ページ番号つき）】
+${emphasizedSpansText}
 
 これはテスト直前の一夜漬け用に、試験に出る可能性が高い項目だけを凝縮してまとめる機能です。次の2種類の項目を抽出してください:
-1. "emphasized": 上記の色付き強調テキストの注記に基づく項目（元の資料で強調されていた内容）。
-2. "inference": 強調の注記はなくても、定義・公式・繰り返し出てくる概念・「重要」「試験に出る」等の文脈など、内容の性質からあなたが試験に出る可能性が高いと判断した項目。
+1. "emphasized": 上記の「色付きで強調されていたテキスト」に基づく項目。
+2. "inference": 強調されてはいなくても、要約の内容から見て定義・公式・繰り返し出てくる概念など、試験に出る可能性が高いとあなたが判断した項目。
 
 以下の形式のJSONオブジェクトのみを出力してください:
 {
   "items": [
-    { "point": "覚えるべき内容を簡潔にまとめた一文", "basis": "emphasized", "sourcePdfIndex": 1, "sourcePage": 1 }
+    { "point": "覚えるべき内容を簡潔にまとめた一文", "basis": "emphasized", "sourcePage": 1 }
   ]
 }
 - basis は "emphasized" か "inference" のいずれか。
-- sourcePdfIndex はその項目の根拠となる資料の番号(「### 資料N」の N)。
-- sourcePage はその項目の根拠となる、資料中のページ番号(Page N の N)。
+- sourcePage は、"emphasized" の項目については根拠にした強調テキストのページ番号(p.N の N)を必ず入れてください。"inference" の項目は、要約のどのあたりの内容か判断できる場合のみ入れ、判断できなければ省略してください。
 - point は暗記できる粒度の簡潔な一文にしてください（長い説明文にしない）。
-- 重要度の高い順に、資料全体から15〜40項目程度に絞ってください。
+- 重要度の高い順に、5〜15項目程度に絞ってください。
 - 出力はこのJSONオブジェクトのみ。`;
 }

@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { db, PDFS_DIR } from "@/lib/db";
 import { extractPdfPages } from "@/lib/pdf";
+import { ensureSummary } from "@/lib/summaryGeneration";
 import type { PdfRecord } from "@/lib/schemas";
 
 export async function GET() {
@@ -61,6 +62,18 @@ export async function POST(req: NextRequest) {
     }
   });
   tx();
+
+  // Summary is mandatory groundwork for the folder-wide "テスト直前" feature
+  // (which reuses it instead of re-sending raw PDF text), so it's generated
+  // eagerly here rather than lazily on first tab view. A failure here (e.g.
+  // rate limit) shouldn't fail the upload — the summary tab's own lazy
+  // generation, and the per-PDF cram step, both fall back to generating it
+  // on demand if it's still missing later.
+  try {
+    await ensureSummary(id);
+  } catch (e) {
+    console.error("Eager summary generation failed", e);
+  }
 
   const record: PdfRecord = {
     id,

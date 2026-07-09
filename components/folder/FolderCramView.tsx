@@ -2,16 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import type { FolderCramItem } from "@/lib/schemas";
-
-interface PdfIndexEntry {
-  pdfId: string;
-  filename: string;
-}
+import type { AggregatedCramItem } from "@/lib/schemas";
 
 export default function FolderCramView({ folderId }: { folderId: string }) {
-  const [items, setItems] = useState<FolderCramItem[] | null>(null);
-  const [pdfIndex, setPdfIndex] = useState<PdfIndexEntry[]>([]);
+  const [items, setItems] = useState<AggregatedCramItem[] | null>(null);
+  const [failedFilenames, setFailedFilenames] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +23,7 @@ export default function FolderCramView({ folderId }: { folderId: string }) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "テスト直前まとめの生成に失敗しました");
         setItems(data.items);
-        setPdfIndex(data.pdfIndex);
+        setFailedFilenames(data.failedFilenames ?? []);
       } catch (e) {
         setError(e instanceof Error ? e.message : "テスト直前まとめの生成に失敗しました");
       } finally {
@@ -70,6 +65,11 @@ export default function FolderCramView({ folderId }: { folderId: string }) {
             {error}
           </div>
         )}
+        {!error && failedFilenames.length > 0 && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            {failedFilenames.join("、")} の生成に失敗しました。他のPDFの結果は表示しています。「再生成」で再試行できます。
+          </div>
+        )}
         {!error && loading && !items && (
           <p className="text-sm text-zinc-400">テスト直前まとめを生成中...</p>
         )}
@@ -79,36 +79,32 @@ export default function FolderCramView({ folderId }: { folderId: string }) {
 
         {!error && items && items.length > 0 && (
           <ul className="flex flex-col gap-2">
-            {items.map((item, i) => {
-              const src = pdfIndex[item.sourcePdfIndex - 1];
-              return (
-                <li
-                  key={i}
-                  className={`rounded-lg border px-4 py-3 ${
-                    item.basis === "emphasized"
-                      ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/20"
-                      : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <p className="text-sm text-zinc-800 dark:text-zinc-100">
-                      <span className="mr-1">{item.basis === "emphasized" ? "🔴" : "🤖"}</span>
-                      {item.point}
-                    </p>
-                    {src && (
-                      <Link
-                        href={`/pdf/${src.pdfId}?page=${item.sourcePage}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 text-xs text-blue-600 underline hover:no-underline dark:text-blue-400"
-                      >
-                        {src.filename} p.{item.sourcePage}
-                      </Link>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
+            {items.map((item, i) => (
+              <li
+                key={i}
+                className={`rounded-lg border px-4 py-3 ${
+                  item.basis === "emphasized"
+                    ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/20"
+                    : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <p className="text-sm text-zinc-800 dark:text-zinc-100">
+                    <span className="mr-1">{item.basis === "emphasized" ? "🔴" : "🤖"}</span>
+                    {item.point}
+                  </p>
+                  <Link
+                    href={`/pdf/${item.pdfId}${item.sourcePage ? `?page=${item.sourcePage}` : ""}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 text-xs text-blue-600 underline hover:no-underline dark:text-blue-400"
+                  >
+                    {item.filename}
+                    {item.sourcePage ? ` p.${item.sourcePage}` : ""}
+                  </Link>
+                </div>
+              </li>
+            ))}
           </ul>
         )}
       </div>
